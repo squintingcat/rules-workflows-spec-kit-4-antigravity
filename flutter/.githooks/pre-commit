@@ -9,5 +9,15 @@ fi
 repo_root="$(git rev-parse --show-toplevel)"
 cd "$repo_root"
 
-echo "[pre-commit] Running local DoD checks (staged scope)..."
+echo "[pre-commit] Checking Supabase schema drift (source-control scope)..."
+bash ./scripts/check_schema_drift.sh --source-control
+
+if [[ "${SKIP_E2E_PATHING:-0}" == "1" ]]; then
+  echo "[pre-commit] SKIP_E2E_PATHING=1 set, skipping scoped E2E path generation."
+else
+  echo "[pre-commit] Generating inferred E2E paths/tests (scoped)..."
+  bash ./testing/e2e/scripts/generate.sh --mode scoped
+fi
+
+echo "[pre-commit] Running local DoD checks (source-control scope)..."
 bash ./scripts/verify_dod.sh

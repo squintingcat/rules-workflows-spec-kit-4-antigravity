@@ -2,7 +2,7 @@ name: Flutter CI
 
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     branches:
       - main
       - master
@@ -23,10 +23,13 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Read Flutter Version
+        run: echo "FLUTTER_VERSION=$(tr -d '\r\n[:space:]' < .flutter-version)" >>"$GITHUB_ENV"
+
       - name: Setup Flutter
         uses: subosito/flutter-action@v2
         with:
-          channel: stable
+          flutter-version: ${{ env.FLUTTER_VERSION }}
           cache: true
 
       - name: Flutter Version
@@ -46,6 +49,28 @@ jobs:
 
       - name: Analyze
         run: flutter analyze
+
+      - name: Generate Inferred E2E Paths/Tests (Full)
+        run: bash ./testing/e2e/scripts/generate.sh --mode full
+
+      - name: Verify Adapter Budget (Full)
+        run: bash ./testing/e2e/scripts/verify_adapter_budget.sh --mode full
+
+      - name: Upload E2E Pathing Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: e2e-pathing-${{ github.run_id }}
+          path: |
+            .ciReport/e2e_pathing/analysis_model_full.json
+            .ciReport/e2e_pathing/summary_full.md
+            .ciReport/e2e_pathing/path_report_full.md
+            .ciReport/e2e_pathing/screen_audit_full.md
+            .ciReport/e2e_pathing/ground_truth_full.json
+            .ciReport/e2e_pathing/journey_classification_full.json
+            .ciReport/e2e_pathing/journey_diff_full.md
+            .ciReport/e2e_pathing/adapter_budget_full.md
+            .ciReport/e2e_pathing/adapter_budget_full.json
+          if-no-files-found: error
 
       - name: Verify Feature Test Parity
         run: bash ./scripts/verify_feature_test_parity.sh

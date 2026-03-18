@@ -1,0 +1,350 @@
+name: Nightly Quality
+
+on:
+  schedule:
+    - cron: "30 1 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  actions: read
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      has_changes: ${{ steps.scan.outputs.has_changes }}
+      changed_files: ${{ steps.scan.outputs.changed_files }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Relevant Changes (last 24h)
+        id: scan
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          mapfile -t changed < <(
+            git log --since="24 hours ago" --name-only --pretty=format: -- \
+              lib \
+              test \
+              integration_test \
+              patrol_test \
+              tool \
+              testing \
+              scripts \
+              ops/testing \
+              supabase \
+              pubspec.yaml \
+              pubspec.lock \
+              | sed '/^[[:space:]]*$/d' \
+              | sort -u
+          )
+
+          if [[ ${#changed[@]} -eq 0 ]]; then
+            echo "[nightly] No relevant code/test/tooling changes in last 24h."
+            echo "has_changes=false" >>"$GITHUB_OUTPUT"
+            echo "changed_files=0" >>"$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "[nightly] Relevant changes in last 24h: ${#changed[@]}"
+          printf '%s\n' "${changed[@]}"
+          echo "has_changes=true" >>"$GITHUB_OUTPUT"
+          echo "changed_files=${#changed[@]}" >>"$GITHUB_OUTPUT"
+
+  nightly-mutation:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Flutter Version
+        run: echo "FLUTTER_VERSION=$(tr -d '\r\n[:space:]' < .flutter-version)" >>"$GITHUB_ENV"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Run Mutation Gate (Nightly)
+        run: |
+          ts="$(date -u +'%Y%m%d-%H%M%S')"
+          mkdir -p .ciReport
+          bash ./scripts/run_mutation_gate.sh \
+            --report ".ciReport/mutation_gate_nightly_${ts}.md"
+
+      - name: Upload Nightly Mutation Report
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-mutation-report-${{ github.run_id }}
+          path: |
+            .ciReport/mutation_gate_nightly_*.md
+            .ciReport/mutation_gate_nightly_*_survivors.csv
+          if-no-files-found: error
+
+  nightly-parallel-validation-android:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Flutter Version
+        run: echo "FLUTTER_VERSION=$(tr -d '\r\n[:space:]' < .flutter-version)" >>"$GITHUB_ENV"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Verify Supabase CLI
+        run: supabase --version
+
+      - name: Run Android Parallel Validation (Nightly)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            set -o pipefail
+            mkdir -p .ciReport
+            bash ./testing/e2e/scripts/run_parallel_validation.sh \
+              --mode full \
+              --device emulator-5554 \
+              --flavor dev \
+              --dart-flavor dev \
+              2>&1 | tee .ciReport/nightly_parallel_validation_android.log
+
+      - name: Build Parallel Validation Failure Summary
+        if: always()
+        run: |
+          mkdir -p .ciReport
+          junit_report="build/app/outputs/androidTest-results/connected/debug/flavors/dev/TEST-Pixel_9-2(AVD) - 16-_app-dev.xml"
+          if [[ -f "$junit_report" ]]; then
+            dart run testing/e2e/scripts/extract_failed_tests.dart \
+              --input "$junit_report" \
+              --output .ciReport/nightly_parallel_validation_android_failures.md
+          elif [[ -f .ciReport/nightly_parallel_validation_android.log ]]; then
+            dart run testing/e2e/scripts/extract_failed_tests.dart \
+              --input .ciReport/nightly_parallel_validation_android.log \
+              --output .ciReport/nightly_parallel_validation_android_failures.md
+          else
+            {
+              echo '# Parallel Validation Failure Summary'
+              echo
+              echo '- Source report: `.ciReport/nightly_parallel_validation_android.log`'
+              echo '- Failed tests: `unknown`'
+              echo
+              echo 'Patrol log missing. Check workflow logs.'
+            } > .ciReport/nightly_parallel_validation_android_failures.md
+          fi
+
+      - name: Verify Journey Coverage Snapshot
+        if: always()
+        run: |
+          bash ./testing/e2e/scripts/verify_journey_coverage.sh --mode full
+
+      - name: Verify E2E Runtime Budget
+        if: always()
+        run: |
+          mkdir -p .ciReport
+          bash ./testing/e2e/scripts/verify_runtime_budget.sh \
+            --log .ciReport/nightly_parallel_validation_android.log \
+            --budget-file testing/e2e/config/runtime_budget.env \
+            --report .ciReport/nightly_parallel_validation_android_runtime_budget.md \
+            --out-env .ciReport/nightly_parallel_validation_android_runtime_budget.env
+
+      - name: Upload Nightly Parallel Validation Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-parallel-validation-android-${{ github.run_id }}
+          path: |
+            .ciReport/nightly_parallel_validation_android.log
+            .ciReport/nightly_parallel_validation_android_failures.md
+            .ciReport/nightly_parallel_validation_android_runtime_budget.md
+            .ciReport/nightly_parallel_validation_android_runtime_budget.env
+            .ciReport/e2e_pathing/summary_full.md
+            .ciReport/e2e_pathing/path_report_full.md
+            .ciReport/e2e_pathing/analysis_model_full.json
+            .ciReport/e2e_pathing/ground_truth_full.json
+            .ciReport/e2e_pathing/journey_classification_full.json
+            .ciReport/e2e_pathing/journey_diff_full.md
+            .ciReport/e2e_pathing/adapter_budget_full.md
+            .ciReport/e2e_pathing/adapter_budget_full.json
+            .ciReport/e2e_pathing/parallel_validation_full.md
+          if-no-files-found: warn
+
+  nightly-explorer-android:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Read Flutter Version
+        run: echo "FLUTTER_VERSION=$(tr -d '\r\n[:space:]' < .flutter-version)" >>"$GITHUB_ENV"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Dependencies
+        run: flutter pub get
+
+      - name: Setup Supabase CLI
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Run Android Explorer (Nightly)
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            set -o pipefail
+            mkdir -p .ciReport
+            bash ./testing/e2e/scripts/run_exploration.sh \
+              --mode full \
+              --device emulator-5554 \
+              --flavor dev \
+              --dart-flavor dev \
+              --log-file .ciReport/nightly_explorer_android.log \
+              2>&1 | tee .ciReport/nightly_explorer_runner.log
+
+      - name: Verify Adapter Budget (Nightly Explorer)
+        if: always()
+        run: bash ./testing/e2e/scripts/verify_adapter_budget.sh --mode full
+
+      - name: Upload Nightly Explorer Artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-explorer-android-${{ github.run_id }}
+          path: |
+            .ciReport/nightly_explorer_android.log
+            .ciReport/nightly_explorer_runner.log
+            .ciReport/e2e_pathing/ground_truth_full.json
+            .ciReport/e2e_pathing/journey_classification_full.json
+            .ciReport/e2e_pathing/exploration_result_full.json
+            .ciReport/e2e_pathing/coverage_gap_full.json
+            .ciReport/e2e_pathing/journey_diff_full.json
+            .ciReport/e2e_pathing/journey_diff_full.md
+            .ciReport/e2e_pathing/exploration_summary_full.md
+            .ciReport/e2e_pathing/adapter_budget_full.md
+            .ciReport/e2e_pathing/adapter_budget_full.json
+          if-no-files-found: warn
+
+  nightly-domain-e2e-android:
+    needs: detect-changes
+    if: needs.detect-changes.outputs.has_changes == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Detect Bucket-C Domain Tests
+        id: domain
+        shell: bash
+        run: |
+          if find patrol_test/domain_tests -type f -name '*_test.dart' | grep -q .; then
+            echo "has_domain_tests=true" >>"$GITHUB_OUTPUT"
+          else
+            echo "has_domain_tests=false" >>"$GITHUB_OUTPUT"
+            echo "[nightly-domain] No Bucket-C domain tests found."
+          fi
+
+      - name: Read Flutter Version
+        if: steps.domain.outputs.has_domain_tests == 'true'
+        run: echo "FLUTTER_VERSION=$(tr -d '\r\n[:space:]' < .flutter-version)" >>"$GITHUB_ENV"
+
+      - name: Setup Flutter
+        if: steps.domain.outputs.has_domain_tests == 'true'
+        uses: subosito/flutter-action@v2
+        with:
+          flutter-version: ${{ env.FLUTTER_VERSION }}
+          cache: true
+
+      - name: Install Dependencies
+        if: steps.domain.outputs.has_domain_tests == 'true'
+        run: flutter pub get
+
+      - name: Setup Supabase CLI
+        if: steps.domain.outputs.has_domain_tests == 'true'
+        uses: supabase/setup-cli@v1
+        with:
+          version: latest
+
+      - name: Run Bucket-C Domain Tests
+        if: steps.domain.outputs.has_domain_tests == 'true'
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 34
+          arch: x86_64
+          profile: pixel_6
+          script: |
+            set -o pipefail
+            mkdir -p .ciReport
+            bash ./testing/e2e/scripts/run_domain_tests.sh \
+              --device emulator-5554 \
+              --flavor dev \
+              --dart-flavor dev \
+              2>&1 | tee .ciReport/nightly_domain_android.log
+
+      - name: Build Bucket-C Failure Summary
+        if: always() && steps.domain.outputs.has_domain_tests == 'true'
+        run: |
+          mkdir -p .ciReport
+          if [[ -f .ciReport/nightly_domain_android.log ]]; then
+            dart run testing/e2e/scripts/extract_failed_tests.dart \
+              --input .ciReport/nightly_domain_android.log \
+              --output .ciReport/nightly_domain_android_failures.md
+          fi
+
+      - name: Upload Nightly Domain Artifacts
+        if: always() && steps.domain.outputs.has_domain_tests == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: nightly-domain-e2e-android-${{ github.run_id }}
+          path: |
+            .ciReport/nightly_domain_android.log
+            .ciReport/nightly_domain_android_failures.md
+          if-no-files-found: warn

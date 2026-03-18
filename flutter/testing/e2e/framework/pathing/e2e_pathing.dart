@@ -1,0 +1,11 @@
+export 'src/dart_project_analyzer.dart';
+export 'src/documentation_analyzer.dart';
+export 'src/ground_truth_builder.dart';
+export 'src/journey_classifier.dart';
+export 'src/journey_diff_builder.dart';
+export 'src/models.dart';
+export 'src/path_inference.dart';
+export 'src/path_utils.dart';
+export 'src/pipeline.dart';
+export 'src/report_writer.dart';
+export 'src/scope_resolver.dart';
