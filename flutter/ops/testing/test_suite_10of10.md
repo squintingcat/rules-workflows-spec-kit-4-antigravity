@@ -36,3 +36,4 @@ This checklist defines the quality bar for a "10/10" test-suite run.
 ## Notes
 - Keep `ops/testing/test_exceptions.txt` empty unless explicitly approved by the user in-thread.
 - If a warning/noise pattern appears in logs, either fix root cause or add deterministic test bootstrap handling.
+- Scoped line coverage is informational only; blocking coverage acceptance is branch-based (`BRDA`).

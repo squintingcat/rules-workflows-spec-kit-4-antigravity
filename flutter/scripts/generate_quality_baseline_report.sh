@@ -1,6 +1,9 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# TODO: replace app_package_name with the actual app package name
+
+
 LCOV_FILE="coverage/lcov.info"
 INCLUDE_PATTERNS_FILE="ops/testing/coverage_include_patterns.txt"
 EXCLUDE_PATTERNS_FILE="ops/testing/coverage_exclude_patterns.txt"
@@ -119,12 +122,12 @@ count_matches() {
 extract_imports() {
   local path="$1"
   if [[ "$HAS_RG" == "1" ]]; then
-    rg -o -N "import 'package:hsf/[^']+'" "$path" \
-      | sed -E "s/^import 'package:hsf\/(.*)'$/lib\/\1/" \
+    rg -o -N "import 'package:app_package_name/[^']+'" "$path" \
+      | sed -E "s/^import 'package:app_package_name\/(.*)'$/lib\/\1/" \
       | sort -u || true
   else
-    grep -oE "import 'package:hsf/[^']+'" "$path" \
-      | sed -E "s/^import 'package:hsf\/(.*)'$/lib\/\1/" \
+    grep -oE "import 'package:app_package_name/[^']+'" "$path" \
+      | sed -E "s/^import 'package:app_package_name\/(.*)'$/lib\/\1/" \
       | sort -u || true
   fi
 }

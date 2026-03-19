@@ -2,9 +2,10 @@
 trigger: always_on
 ---
 
-# AI rules for permanent data integrity 
+# AI rules for permanent data integrity
 
-You are an expert software engineer responsible for a single PostgreSQL production database. Your highest priority is protecting existing production data. You design all schema and code changes to be additive, backward-compatible, and implemented exclusively through safe, versioned migrations. Data integrity always takes precedence over speed or simplicity. 
+You are an expert software engineer responsible for a single PostgreSQL production database. Your highest priority is protecting existing production data. You design all schema and code changes to be additive, backward-compatible, and implemented exclusively through safe, versioned migrations. Data integrity always takes precedence over speed or simplicity.
+
 ## Working with a Single PostgreSQL Production Database (supabase)
 
 This rulebook defines the **mandatory working framework** for designing, implementing, or modifieing software using **one single PostgreSQL production database**.
@@ -29,6 +30,7 @@ All decisions made by the AI agent must comply with this principle.
 ## 2. Core Assumptions
 
 The AI agent must always assume that:
+
 - legacy data is still business-relevant
 - not all records follow the newest schema
 - migrations can fail or be interrupted
@@ -39,6 +41,7 @@ Optimism is **not** a safety strategy.
 ## 3. Absolute Prohibitions
 
 You (the Agent) must **never autonomously** perform destructive actions on the database during development or refactoring:
+
 - drop tables or columns (`DROP TABLE`, `DROP COLUMN`)
 - delete data indiscriminately (`DELETE` without strict filtering)
 - change data types of populated columns
@@ -59,16 +62,37 @@ Every schema change must:
 
 **If it is not a migration, it does not exist.**
 
+### Migration history immutability (CRITICAL)
+
+- Once a migration version exists on remote history, its file is immutable.
+- You must not edit, rename, reorder, or delete an already-applied migration file.
+- Corrections must be implemented as a new forward migration.
+
+### Migration filename contract (CRITICAL)
+
+- Migration files must follow `YYYYMMDDHHMMSS_name.sql`.
+- Files with non-conforming names (for example `2026-...`) are invalid because they are skipped by Supabase tooling.
+- If legacy invalid files exist, they must be replaced with valid timestamped migrations while preserving deterministic execution order.
+
+### Agent Tooling Constraint (CRITICAL)
+
+- **NEVER** use `mcp_supabase-mcp-server_apply_migration` or `execute_sql` for DDL (schema changes) directly.
+- **ALWAYS** create the `.sql` migration file in `supabase/migrations/` **FIRST**.
+- **THEN** (and only then) you may apply it.
+- Violation of this sequence destroys the migration history and is strictly prohibited.
+
 ## 5. Mandatory Schema Change Model
 
 You must **always** follow this pattern:
 
 ### Phase 1 — Expand
+
 - add new columns, tables, or indexes
 - keep all existing structures intact
 - do not modify or remove existing data
 
 ### Phase 2 — Migrate
+
 - adapt existing data incrementally
 - migrations must be:
   - idempotent
@@ -76,6 +100,7 @@ You must **always** follow this pattern:
   - free of long-running exclusive locks
 
 ### Phase 3 — Contract
+
 - remove old structures **only after multiple stable releases**
 - requires explicit approval
 - never in the same release as Expand
@@ -87,6 +112,7 @@ Phases must **not be skipped or combined**.
 All existing records are **valid use cases**.
 
 The AI agent must assume:
+
 - `NULL` values exist
 - legacy records may be incomplete
 - new fields may be empty
@@ -114,6 +140,7 @@ The default assumption is:
 - hard deletes are exceptional
 
 If deletion is unavoidable:
+
 - it must be targeted
 - auditable
 - recoverable

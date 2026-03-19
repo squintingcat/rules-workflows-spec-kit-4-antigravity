@@ -154,7 +154,7 @@ is_dod_relevant_file() {
   [[ "$file" =~ ^lib/.*\.dart$ ]] && return 0
   [[ "$file" =~ ^test/.*\.dart$ ]] && return 0
   [[ "$file" =~ ^ops/testing/ ]] && return 0
-  [[ "$file" =~ ^scripts/(verify_coverage_baseline|generate_quality_baseline_report|verify_test_quality_guards|verify_dod|run_local_ci)\.sh$ ]] && return 0
+  [[ "$file" =~ ^scripts/(verify_coverage_baseline|generate_quality_baseline_report|verify_test_quality_guards|verify_dod|run_local_ci|generate_e2e_tests)\.sh$ ]] && return 0
   [[ "$file" == ".github/workflows/flutter-ci.yml" ]] && return 0
   [[ "$file" =~ ^\.agent/rules/ ]] && return 0
   return 1
@@ -304,7 +304,8 @@ for file in "${CHANGED_PROD_DART[@]}"; do
   fi
 done
 
-printf 'MIN_LIB_COVERAGE_PCT=0\n' >"$scoped_baseline_file"
+printf 'MIN_BRANCH_COVERAGE_BASELINE_PCT=0\n' >"$scoped_baseline_file"
+printf 'INFO_LINE_COVERAGE_PCT=0\n' >>"$scoped_baseline_file"
 printf '# Scoped DoD include patterns (generated)\n' >"$scoped_include_file"
 
 for pattern in "${!COVERAGE_SCOPE_SET[@]}"; do

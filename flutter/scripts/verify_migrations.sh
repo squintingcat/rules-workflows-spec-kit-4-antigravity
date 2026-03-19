@@ -10,7 +10,7 @@ Usage: ./scripts/verify_migrations.sh [--base-ref <ref>] [--compare-range <range
 
 Verifies changed Supabase migration files for:
 - naming and ordering constraints
-- migration immutability (no delete/rename)
+- migration immutability (no delete/rename, except legacy filename normalization)
 - safety patterns (destructive SQL allowed only in *_contract.sql, broad grants/default privileges)
 - basic idempotency assumptions (CREATE INDEX should use IF NOT EXISTS)
 EOF
@@ -106,12 +106,73 @@ WARNINGS=0
 
 echo "[migration-verify] Compare range: $COMPARE_RANGE"
 
+is_valid_timestamp_migration_name() {
+  local base_name="$1"
+  [[ "$base_name" =~ ^[0-9]{14}_.+\.sql$ ]]
+}
+
+is_legacy_dashed_migration_name() {
+  local base_name="$1"
+  [[ "$base_name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}_.+\.sql$ ]]
+}
+
+is_allowed_legacy_rename() {
+  local status="$1"
+  local old_path="$2"
+  local new_path="$3"
+
+  [[ "$status" == "R100" ]] || return 1
+  [[ -n "$old_path" && -n "$new_path" ]] || return 1
+
+  local old_base new_base
+  old_base="$(basename "$old_path")"
+  new_base="$(basename "$new_path")"
+
+  is_legacy_dashed_migration_name "$old_base" || return 1
+  is_valid_timestamp_migration_name "$new_base" || return 1
+
+  return 0
+}
+
+is_allowed_contract_suffix_rename() {
+  local status="$1"
+  local old_path="$2"
+  local new_path="$3"
+
+  [[ "$status" == "R100" ]] || return 1
+  [[ -n "$old_path" && -n "$new_path" ]] || return 1
+
+  local old_base new_base old_prefix old_suffix expected_new_base
+  old_base="$(basename "$old_path")"
+  new_base="$(basename "$new_path")"
+
+  is_valid_timestamp_migration_name "$old_base" || return 1
+  [[ "$old_base" != *_contract.sql ]] || return 1
+  [[ "$new_base" == *_contract.sql ]] || return 1
+
+  old_prefix="${old_base%%_*}"
+  old_suffix="${old_base#*_}"
+  old_suffix="${old_suffix%.sql}"
+  expected_new_base="${old_prefix}_${old_suffix}_contract.sql"
+
+  [[ "$new_base" == "$expected_new_base" ]]
+}
+
 while IFS= read -r row; do
   [[ -z "$row" ]] && continue
   status="$(awk '{print $1}' <<<"$row")"
   path="$(awk '{print $2}' <<<"$row")"
+  new_path="$(awk '{print $3}' <<<"$row")"
 
   if [[ "$status" =~ ^(D|R) ]]; then
+    if is_allowed_legacy_rename "$status" "$path" "$new_path"; then
+      echo "[migration-verify] INFO: allowed legacy migration filename normalization: $path -> $new_path"
+      continue
+    fi
+    if is_allowed_contract_suffix_rename "$status" "$path" "$new_path"; then
+      echo "[migration-verify] INFO: allowed contract migration suffix normalization: $path -> $new_path"
+      continue
+    fi
     echo "[migration-verify] ERROR: Migration immutability violated ($status): $path" >&2
     ERRORS=$((ERRORS + 1))
   fi
@@ -154,7 +215,7 @@ for migration in "${CHANGED_MIGRATIONS[@]}"; do
     is_contract_migration=1
   fi
 
-  if [[ ! "$base_name" =~ ^[0-9]{14}_.+\.sql$ && ! "$base_name" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}-[0-9]{2}-[0-9]{2}_.+\.sql$ ]]; then
+  if ! is_valid_timestamp_migration_name "$base_name" && ! is_legacy_dashed_migration_name "$base_name"; then
     echo "[migration-verify] ERROR: Invalid migration filename format: $migration" >&2
     ERRORS=$((ERRORS + 1))
   fi

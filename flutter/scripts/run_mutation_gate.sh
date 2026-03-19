@@ -9,11 +9,24 @@ REPORT_FILE=""
 MAX_MUTANTS_PER_FILE=4
 PER_MUTANT_TIMEOUT_SECONDS=45
 MAX_RUNTIME_SECONDS=300
+MAX_RUNTIME_SECONDS_EXPLICIT="false"
 FAIL_ON_THRESHOLD="true"
 OPERATOR_PROFILE="stable"
 
 MIN_MUTATION_SCORE_PCT=75
 MIN_HIGH_RISK_MUTATION_SCORE_PCT=85
+
+source_env_file() {
+  local env_file="$1"
+  [[ -f "$env_file" ]] || return 1
+
+  local sanitized_file
+  sanitized_file="$(mktemp)"
+  tr -d '\r' <"$env_file" >"$sanitized_file"
+  # shellcheck disable=SC1090
+  source "$sanitized_file"
+  rm -f "$sanitized_file"
+}
 
 usage() {
   cat <<'EOF'
@@ -66,6 +79,7 @@ while [[ $# -gt 0 ]]; do
       ;;
     --max-runtime-seconds)
       MAX_RUNTIME_SECONDS="${2:-300}"
+      MAX_RUNTIME_SECONDS_EXPLICIT="true"
       shift 2
       ;;
     --operator-profile)
@@ -94,13 +108,11 @@ if [[ ! -f "$TARGETS_FILE" ]]; then
 fi
 
 if [[ -f "$QUALITY_GATES_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source "$QUALITY_GATES_FILE"
+  source_env_file "$QUALITY_GATES_FILE"
 fi
 
 if [[ -n "$QUALITY_SNAPSHOT_FILE" && -f "$QUALITY_SNAPSHOT_FILE" ]]; then
-  # shellcheck disable=SC1090
-  source "$QUALITY_SNAPSHOT_FILE"
+  source_env_file "$QUALITY_SNAPSHOT_FILE"
 fi
 
 if [[ -z "${REPORT_FILE:-}" ]]; then
@@ -109,7 +121,7 @@ if [[ -z "${REPORT_FILE:-}" ]]; then
 fi
 mkdir -p "$(dirname "$REPORT_FILE")"
 
-if [[ -n "${MAX_MUTATION_RUNTIME_SECONDS:-}" ]]; then
+if [[ "$MAX_RUNTIME_SECONDS_EXPLICIT" != "true" && -n "${MAX_MUTATION_RUNTIME_SECONDS:-}" ]]; then
   MAX_RUNTIME_SECONDS="$MAX_MUTATION_RUNTIME_SECONDS"
 fi
 

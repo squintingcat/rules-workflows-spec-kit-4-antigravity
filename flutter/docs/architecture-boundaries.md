@@ -7,7 +7,7 @@ Keep features isolated and deletable by enforcing imports through feature public
 ## Rule
 
 - Allowed cross-feature import:
-  - `package:hsf/features/<feature>/<feature>.dart`
+  - `package:app_package_name/features/<feature>/<feature>.dart`
 - Forbidden cross-feature import:
   - Any direct import into `data/`, `domain/`, `presentation/`, `services/`, etc. of another feature.
 

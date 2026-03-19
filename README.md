@@ -4,6 +4,8 @@
 > **LAB-EXPERIMENT / NOT PRODUCTION-READY**
 > This repository is a personal experimental setup. It serves exclusively for researching how high-quality code *could* be generated using current AI agents. Nothing herein should be misunderstood as "best practice" for live production systems.
 
+Some scripts are not updated to your project structure. Please update them before using. For example, replace `app_package_name` with the actual app package name in the scripts. Use your LLM to update them on any errors.
+
 ## 🧪 The Experiment: A "Shoulder-View"
 
 This is not a finished framework or product. It is a **pure greenfield experiment** to find out how far one can actually go today with AI agents (Antigravity, Codex, etc.) when given strict rules for architecture and data integrity.

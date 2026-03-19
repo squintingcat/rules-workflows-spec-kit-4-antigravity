@@ -98,6 +98,36 @@ Note: UI components in the shared layer are generic visual building blocks witho
 
 ---
 
+## E2E architecture contract
+- The E2E framework is split into explicit layers:
+  - generic AST/ground-truth/pathing core under `testing/e2e/framework/pathing/**`
+  - generic runtime exploration under `testing/e2e/framework/explorer/**`
+  - project adapter glue under `testing/e2e/framework/adapter/**`
+  - domain-oracle Patrol tests under `patrol_test/domain_tests/**`
+- This split is protected architecture. Hidden coupling between these layers is prohibited.
+
+## E2E dependency direction
+- Explorer core must remain app-agnostic by default.
+- App-specific knowledge must not be added directly to `testing/e2e/framework/explorer/**` unless it is expressed through adapter interfaces.
+- Project-specific login, seed, permission, route bootstrap, custom locators, and outcome probes belong in the adapter layer.
+- Domain-specific end-to-end assertions that cannot be expressed generically belong in Bucket-C domain tests, not in the generic explorer core.
+
+## E2E anti-regression rule
+- Do not reintroduce a monolithic scenario generator or generated Patrol suite as the primary architecture.
+- Do not add new app-specific scenario runners to the pathing core.
+- Do not move adapter responsibilities into the explorer core for convenience.
+- If a new E2E requirement cannot be covered generically, prefer:
+  - adapter extension for Bucket B, or
+  - explicit Bucket-C domain test,
+  instead of hardcoding journey-specific behavior in the core.
+
+## E2E deletability definition of done
+- The project adapter must stay small and replaceable.
+- Generic explorer/pathing code must remain reusable without importing app feature code directly.
+- Removing or replacing a project adapter must not require rewriting the explorer core.
+
+---
+
 ## Public API discipline
 - Feature public APIs must be minimal and intentionally designed.
 - Export only what other modules truly need.

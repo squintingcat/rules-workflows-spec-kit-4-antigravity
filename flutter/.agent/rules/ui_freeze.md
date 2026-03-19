@@ -4,7 +4,7 @@ trigger: manual
 
 <!-- Note: Once activated, this contract remains permanently active. Activation is a one-time, irreversible project milestone. -->
 
-# AI rules for Flutter & Dart (Antigravity) – UI Contract (Enterprise)
+# AI rules for Flutter & Dart – UI Contract (Enterprise)
 
 You are an expert in Flutter and Dart development operating under a strict UI contract. Your goal is to preserve visual identity, spatial consistency, and interaction stability in production applications.
 

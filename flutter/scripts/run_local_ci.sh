@@ -4,7 +4,7 @@ set -euo pipefail
 SKIP_MUTATION="false"
 TEN_OF_TEN_MODE="false"
 CURRENT_STEP=0
-TOTAL_STEPS=14
+TOTAL_STEPS=15
 
 usage() {
   cat <<'EOF'
@@ -40,7 +40,7 @@ while [[ $# -gt 0 ]]; do
 done
 
 if [[ "$SKIP_MUTATION" != "true" ]]; then
-  TOTAL_STEPS=16
+  TOTAL_STEPS=17
 fi
 if [[ "$TEN_OF_TEN_MODE" == "true" ]]; then
   TOTAL_STEPS=$((TOTAL_STEPS + 1))
@@ -83,6 +83,9 @@ bash ./scripts/verify_migrations.sh
 
 progress "Running static analysis..."
 ./scripts/flutterw.sh analyze
+
+progress "Generating inferred E2E pathing baseline (full mode)..."
+bash ./testing/e2e/scripts/generate.sh --mode full
 
 progress "Verifying feature test parity..."
 bash ./scripts/verify_feature_test_parity.sh
@@ -163,9 +166,9 @@ bash ./scripts/verify_reliability_report.sh --report "$report_file" --fail-on-un
 
 coverage_baseline_file="ops/testing/coverage_baseline.env"
 if [[ -f "$coverage_baseline_file" ]]; then
-  next_baseline="$(grep -E '^[[:space:]]*MIN_LIB_COVERAGE_PCT=' "$coverage_baseline_file" | tail -n 1 | cut -d'=' -f2 | tr -d '[:space:]')"
+  next_baseline="$(grep -E '^[[:space:]]*MIN_BRANCH_COVERAGE_BASELINE_PCT=' "$coverage_baseline_file" | tail -n 1 | cut -d'=' -f2 | tr -d '[:space:]')"
   if [[ -n "${next_baseline:-}" ]]; then
-    echo "[local-ci] Indicator: next minimum coverage baseline = ${next_baseline}%"
+    echo "[local-ci] Indicator: next minimum branch coverage baseline = ${next_baseline}%"
   fi
 fi
 

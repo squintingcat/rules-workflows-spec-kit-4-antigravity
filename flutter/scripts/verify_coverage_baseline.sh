@@ -12,7 +12,11 @@ usage() {
   cat <<'EOF'
 Usage: ./scripts/verify_coverage_baseline.sh [--lcov <file>] [--baseline <file>] [--quality-gates <file>] [--include-patterns <file>] [--exclude-patterns <file>] [--ratchet-update <true|false>]
 
-Verifies line coverage against a minimum baseline.
+Verifies scoped branch coverage against:
+- a ratcheting branch baseline, and
+- a fixed hard branch gate.
+
+Scoped line coverage is reported for visibility only and does not block.
 Coverage scope:
 - files under lib/
 - includes files matching regex entries from:
@@ -21,16 +25,17 @@ Coverage scope:
   - ops/testing/coverage_exclude_patterns.txt (default)
 
 Baseline file format:
-  MIN_LIB_COVERAGE_PCT=8.74
+  MIN_BRANCH_COVERAGE_BASELINE_PCT=98.64
+Optional informational value:
+  INFO_LINE_COVERAGE_PCT=99.27
 
 Quality gates file format:
   MIN_BRANCH_COVERAGE_PCT=80
 Note: this threshold is applied to scoped LCOV branch coverage (BRDA).
-If BRDA is unavailable, the script falls back to scoped line coverage.
 
 Ratchet mode:
-- when --ratchet-update true and current coverage > baseline,
-  update MIN_LIB_COVERAGE_PCT in-place for future runs.
+- when --ratchet-update true and current branch coverage > baseline,
+  update MIN_BRANCH_COVERAGE_BASELINE_PCT in-place for future runs.
 EOF
 }
 
@@ -97,11 +102,13 @@ if [[ ! -f "$EXCLUDE_PATTERNS_FILE" ]]; then
   exit 1
 fi
 
-min_coverage="$(grep -E '^[[:space:]]*MIN_LIB_COVERAGE_PCT=' "$BASELINE_FILE" | tail -n 1 | cut -d'=' -f2 | tr -d '[:space:]')"
-if [[ -z "${min_coverage:-}" ]]; then
-  echo "[coverage-baseline] ERROR: MIN_LIB_COVERAGE_PCT missing in baseline file: $BASELINE_FILE" >&2
+branch_baseline="$(grep -E '^[[:space:]]*MIN_BRANCH_COVERAGE_BASELINE_PCT=' "$BASELINE_FILE" | tail -n 1 | cut -d'=' -f2 | tr -d '[:space:]')"
+if [[ -z "${branch_baseline:-}" ]]; then
+  echo "[coverage-baseline] ERROR: MIN_BRANCH_COVERAGE_BASELINE_PCT missing in baseline file: $BASELINE_FILE" >&2
   exit 1
 fi
+
+line_reference="$(grep -E '^[[:space:]]*INFO_LINE_COVERAGE_PCT=' "$BASELINE_FILE" | tail -n 1 | cut -d'=' -f2 | tr -d '[:space:]' || true)"
 
 min_quality_gate_coverage="$(grep -E '^[[:space:]]*MIN_BRANCH_COVERAGE_PCT=' "$QUALITY_GATES_FILE" | tail -n 1 | cut -d'=' -f2 | tr -d '[:space:]')"
 if [[ -z "${min_quality_gate_coverage:-}" ]]; then
@@ -109,8 +116,13 @@ if [[ -z "${min_quality_gate_coverage:-}" ]]; then
   exit 1
 fi
 
-if ! [[ "$min_coverage" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
-  echo "[coverage-baseline] ERROR: MIN_LIB_COVERAGE_PCT is not numeric: $min_coverage" >&2
+if ! [[ "$branch_baseline" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "[coverage-baseline] ERROR: MIN_BRANCH_COVERAGE_BASELINE_PCT is not numeric: $branch_baseline" >&2
+  exit 1
+fi
+
+if [[ -n "${line_reference:-}" ]] && ! [[ "$line_reference" =~ ^[0-9]+([.][0-9]+)?$ ]]; then
+  echo "[coverage-baseline] ERROR: INFO_LINE_COVERAGE_PCT is not numeric: $line_reference" >&2
   exit 1
 fi
 
@@ -205,58 +217,68 @@ coverage_stats="$(
 
 IFS='|' read -r current_coverage hit_lines total_lines scoped_files branch_hit branch_total branch_coverage <<<"$coverage_stats"
 
-echo "[coverage-baseline] Current coverage: $current_coverage%"
-echo "[coverage-baseline] Baseline minimum: $min_coverage%"
-echo "[coverage-baseline] Quality-gate minimum: $min_quality_gate_coverage%"
+echo "[coverage-baseline] Current line coverage: $current_coverage%"
+if (( branch_total > 0 )); then
+  echo "[coverage-baseline] Current branch coverage: $branch_coverage%"
+else
+  echo "[coverage-baseline] Current branch coverage: n/a"
+fi
+echo "[coverage-baseline] Branch baseline minimum: $branch_baseline%"
+echo "[coverage-baseline] Hard branch gate minimum: $min_quality_gate_coverage%"
+if [[ -n "${line_reference:-}" ]]; then
+  echo "[coverage-baseline] Informational line coverage reference: $line_reference%"
+fi
 echo "[coverage-baseline] Scoped files: $scoped_files"
 echo "[coverage-baseline] Scoped lines: $hit_lines/$total_lines"
 if (( branch_total > 0 )); then
   echo "[coverage-baseline] Scoped branches: $branch_hit/$branch_total ($branch_coverage%)"
 else
-  echo "[coverage-baseline] Scoped branches: n/a (LCOV has no BRDA entries; using scoped line coverage fallback for quality gate)."
+  echo "[coverage-baseline] Scoped branches: n/a (LCOV has no BRDA entries; branch gates cannot be evaluated)."
 fi
 echo "[coverage-baseline] Include patterns: $INCLUDE_PATTERNS_FILE"
 echo "[coverage-baseline] Exclude patterns: $EXCLUDE_PATTERNS_FILE"
 echo "[coverage-baseline] Quality gates file: $QUALITY_GATES_FILE"
 
-if awk "BEGIN {exit !($current_coverage + 0 < $min_coverage + 0)}"; then
-  echo "[coverage-baseline] ERROR: coverage dropped below baseline." >&2
-  exit 1
-fi
-
 if (( branch_total > 0 )); then
+  if awk "BEGIN {exit !($branch_coverage + 0 < $branch_baseline + 0)}"; then
+    echo "[coverage-baseline] ERROR: branch coverage dropped below ratchet baseline." >&2
+    exit 1
+  fi
   if awk "BEGIN {exit !($branch_coverage + 0 < $min_quality_gate_coverage + 0)}"; then
     echo "[coverage-baseline] ERROR: branch coverage below quality gate threshold." >&2
     exit 1
   fi
 else
-  if awk "BEGIN {exit !($current_coverage + 0 < $min_quality_gate_coverage + 0)}"; then
-    echo "[coverage-baseline] ERROR: scoped line coverage below quality gate threshold fallback (branch data unavailable)." >&2
-    exit 1
-  fi
+  echo "[coverage-baseline] WARNING: branch coverage data unavailable; line coverage remains informational and no coverage gate is enforced." >&2
 fi
 
-if [[ "$RATCHET_UPDATE" == "true" ]] && awk "BEGIN {exit !($current_coverage + 0 > $min_coverage + 0)}"; then
+if [[ "$RATCHET_UPDATE" == "true" && $branch_total -gt 0 ]] && awk "BEGIN {exit !($branch_coverage + 0 > $branch_baseline + 0)}"; then
   tmp_file="$(mktemp)"
-  awk -v value="$current_coverage" '
-    BEGIN {updated=0}
+  awk -v branch_value="$branch_coverage" -v line_value="$current_coverage" '
+    BEGIN {branch_updated=0; line_updated=0}
     {
-      if ($0 ~ /^[[:space:]]*MIN_LIB_COVERAGE_PCT=/) {
-        print "MIN_LIB_COVERAGE_PCT=" value
-        updated=1
+      if ($0 ~ /^[[:space:]]*MIN_BRANCH_COVERAGE_BASELINE_PCT=/) {
+        print "MIN_BRANCH_COVERAGE_BASELINE_PCT=" branch_value
+        branch_updated=1
+      } else if ($0 ~ /^[[:space:]]*INFO_LINE_COVERAGE_PCT=/) {
+        print "INFO_LINE_COVERAGE_PCT=" line_value
+        line_updated=1
       } else {
         print
       }
     }
     END {
-      if (updated == 0) {
-        print "MIN_LIB_COVERAGE_PCT=" value
+      if (branch_updated == 0) {
+        print "MIN_BRANCH_COVERAGE_BASELINE_PCT=" branch_value
+      }
+      if (line_updated == 0) {
+        print "INFO_LINE_COVERAGE_PCT=" line_value
       }
     }
   ' "$BASELINE_FILE" >"$tmp_file"
   mv "$tmp_file" "$BASELINE_FILE"
 
-  echo "[coverage-baseline] Ratchet: baseline increased to $current_coverage% in $BASELINE_FILE"
+  echo "[coverage-baseline] Ratchet: branch baseline increased to $branch_coverage% in $BASELINE_FILE"
   echo "[coverage-baseline] Note: this applies to the next push; current push is not blocked."
 fi
 

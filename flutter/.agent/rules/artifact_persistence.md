@@ -37,7 +37,7 @@ To ensure readability, we use numbered prefixes:
 2.  **01_Implementation_Plan.md**:
     - The detailed technical plan / specification.
 3.  **02_Walkthrough.md**:
-    - Step-by-step guide for implementation.
+    - Step-by-step guide for implementation verification.
 4.  **03_Task_List.md**:
     - Checklist of tasks.
 5.  **04_Architecture_Decisions.md** (see ADR Template):
@@ -47,6 +47,8 @@ To ensure readability, we use numbered prefixes:
     - Each decision gets numbered sequentially (ADR-001, ADR-002, etc.)
 6.  **Uploaded images**:
     - Each uploaded image related to this implementation plan should be stored as well.
+7.  **Addition informations**
+    - All additional provided information that let to the implementation or change should be stored in this folder
 
 ### ADR Template
 Each decision should follow this structure:

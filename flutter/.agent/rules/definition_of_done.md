@@ -30,7 +30,13 @@ If one DoD item is not satisfied, the work is not done.
 - For test-relevant changes (production logic, tests, quality-gate config), required minimum evidence is context-bound:
   - local commit (pre-commit DoD): `bash ./scripts/verify_dod.sh` (scoped to changed/new files/features, mutation skipped)
   - local push (pre-push CI): `bash ./scripts/run_local_ci.sh --skip-mutation` (full project scope without mutation)
-  - remote push (CI): full gate pipeline from `.github/workflows/flutter-ci.yml` (includes mutation)
+  - remote pull request (CI): full gate pipeline from `.github/workflows/flutter-ci.yml` (includes mutation)
+- For E2E-framework changes under `testing/e2e/**`, required minimum evidence is strategy-bound:
+  - `bash ./testing/e2e/scripts/generate.sh --mode scoped` for scoped deltas
+  - `bash ./testing/e2e/scripts/run_journey_diff.sh --mode scoped` when explorer/diff logic changes
+  - `bash ./testing/e2e/scripts/verify_adapter_budget.sh --mode full` when adapter/classification logic changes
+  - `bash ./testing/e2e/scripts/run_domain_tests.sh --help` at minimum when Bucket-C runner wiring changes
+  - if explorer runtime behavior changes, a local explorer run or equivalent existing artifact update must be provided
 - When the user explicitly requests "10/10" test-suite quality, additional evidence is mandatory:
   - `bash ./scripts/run_local_ci.sh --ten-of-ten --skip-mutation`
   - stability matrix log without warnings from `.ciReport/test_stability_matrix_*.log`
@@ -40,7 +46,8 @@ If one DoD item is not satisfied, the work is not done.
   - `ops/testing/coverage_exclude_patterns.txt`
   - `ops/testing/mutation_targets.txt`
   - `ops/testing/mutation_exclude_mutants.txt`
-- Coverage acceptance is based on scoped branch coverage (`BRDA`), with scoped line coverage only as a fallback when BRDA is unavailable.
+- Coverage acceptance and ratchet are based on scoped branch coverage (`BRDA`).
+- Scoped line coverage is informational only and must not block completion on its own.
 - Quality scope must not be silently weakened:
   - expanding exclude patterns,
   - shrinking include patterns,
@@ -52,6 +59,7 @@ If one DoD item is not satisfied, the work is not done.
   - `.github/workflows/flutter-ci.yml`
 - Ad-hoc manual coverage recalculation outside the scoped pipeline is not accepted as completion evidence.
 - Test removals or assertion-weakening are prohibited unless replaced with equal-or-stronger automated coverage in the same delivery.
+- For `testing/e2e/**`, weakening explorer coverage, journey diff quality, adapter-budget guardrails, or Bucket-C coverage counts as assertion weakening unless replaced with equal-or-stronger automated evidence in the same delivery.
 - A behavior change without tests is allowed only with explicit user-approved `TEST_EXCEPTION` containing:
   - reason,
   - risk,
@@ -65,10 +73,17 @@ If one DoD item is not satisfied, the work is not done.
 - Any schema/data change must preserve production data integrity.
 - Expand/contract discipline must be respected.
 - Destructive SQL is only acceptable within explicitly allowed migration contracts.
+- Already-applied remote migrations are immutable: do not edit, rename, reorder, or delete them.
+- New/changed migration files must follow `YYYYMMDDHHMMSS_name.sql`.
+- For any migration-related change, required evidence is:
+  - `supabase db reset --local --yes` succeeds.
+  - `supabase db diff --linked --schema public` reports no schema changes.
+  - If `supabase migration list` shows history-ID drift, a concrete risk note must be documented (schema parity vs. history parity).
 
 ## 5. Knowledge persistence
 - If the change introduces or updates operational behavior, a durable rule-level guardrail must exist in `.agent/rules`.
 - If an incident exposed a process gap, that gap must be closed by creating or updating a rule before marking done.
+- If E2E strategy, explorer behavior, adapter boundaries, or Bucket-C responsibilities change, the relevant `.agent/rules` guidance must be updated before marking done.
 
 ## 6. Handover quality
 - Final output must include:

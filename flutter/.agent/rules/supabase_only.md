@@ -23,12 +23,24 @@ The backend stack is fixed:
   - Supabase Storage for images and file uploads
 
 ### Explicitly forbidden
-- Firebase / Firestore
+- Firebase as a backend replacement (e.g. Firestore, Realtime Database, Firebase Auth, Firebase Storage, Cloud Functions, Hosting)
 - Appwrite
 - Custom backends that replace Supabase
 - “Comparable” or “alternative” backend platforms
 
 If a requirement cannot be fulfilled using Supabase, **do not propose the solution**.
+
+### Explicitly allowed exception (testing and observability only)
+- Firebase App Distribution for internal app testing/distribution
+- Firebase Crashlytics for crash logging
+- Firebase Analytics for debugging/observability telemetry
+- Firebase Performance Monitoring for debugging/performance telemetry
+
+Constraints for this exception:
+- Firebase must not be used for product data storage, authentication, authorization, sync, or business logic.
+- Analytics/Performance telemetry must be observability-only and must not become a required product logic dependency.
+- Supabase remains the only backend source of truth.
+- The app must continue to function with Supabase backend contracts even if Firebase services are disabled.
 
 ---
 
@@ -73,9 +85,21 @@ If a requirement cannot be fulfilled using Supabase, **do not propose the soluti
 
 ---
 
-## Core product scope (add scope here)
+## Core product scope (current, not final)
 
-
+- Multi-user application
+- Users and their horses are the central entity (persists over any change in groups assignment ect)
+- Groups:
+  - Users create groups (one per Stable, many for spezial user groups)
+- Tasks:
+  - Users create tasks
+  - Users react to tasks using **predefined actions**
+- Calendar entries
+  - per group (optional)
+- Messaging exists but is **not the primary feature**
+- Image uploads:
+  - Profile images (e.g. user / horses)
+  - Event-based images (injuries, lost & found, incidents)
 
 Requirements may evolve, but **Supabase-only constraints remain fixed**.
 

@@ -1,4 +1,6 @@
 #!/usr/bin/env bash
+# todo: replace app_package_name with the actual app package name
+
 set -euo pipefail
 
 OUTPUT_FILE=""
@@ -29,7 +31,7 @@ RAW_IMPORTS="$TMP_DIR/raw_imports.txt"
 VIOLATIONS="$TMP_DIR/violations.tsv"
 REPORT="$TMP_DIR/report.md"
 
-rg -n "import 'package:hsf/features/" lib >"$RAW_IMPORTS" || true
+grep -R -n "import 'package:app_package_name/features/" lib >"$RAW_IMPORTS" || true
 
 cat >"$TMP_DIR/audit.awk" <<'AWK'
 function source_feature(path,   a,n,i){
@@ -49,12 +51,12 @@ function source_area(path,   a){
 }
 function import_feature(path,   p,a){
   p = path;
-  sub(/^package:hsf\/features\//, "", p);
+  sub(/^package:app_package_name\/features\//, "", p);
   split(p, a, "/");
   return a[1];
 }
 function is_public_api(path, feature){
-  return path == ("package:hsf/features/" feature "/" feature ".dart");
+  return path == ("package:app_package_name/features/" feature "/" feature ".dart");
 }
 {
   file = $1;
@@ -143,4 +145,3 @@ cat "$REPORT"
 if [[ "$FAIL_ON_VIOLATIONS" == true && "$TOTAL_VIOLATIONS" -gt 0 ]]; then
   exit 1
 fi
-

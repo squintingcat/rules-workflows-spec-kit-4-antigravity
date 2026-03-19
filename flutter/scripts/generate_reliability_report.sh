@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-OUTPUT_FILE="<path_to>_Reliability_Operational_Report.md"
+OUTPUT_FILE=".specification/2026-02-11-17-35_Security-Reliability-Hardening/23_Reliability_Operational_Report.md"
 
 usage() {
   cat <<'EOF'

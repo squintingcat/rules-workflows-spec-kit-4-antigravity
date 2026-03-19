@@ -14,6 +14,12 @@ Before making substantial changes, the agent must confirm:
 - test-scope impact is identified (coverage scope, mutation targets, exclusions, CI gates).
 - test-impact mapping is identified (changed behavior -> required test types/files).
 - potential quality-scope shrink risk is identified (include/exclude/target/exclusion list deltas).
+- for E2E changes, the agent must identify which layer is being changed:
+  - generic pathing core,
+  - generic explorer,
+  - project adapter,
+  - Bucket-C domain tests,
+  - CI/reporting.
 
 ## 2. Post-change self-audit (mandatory)
 Before finalizing, the agent must verify:
@@ -26,6 +32,7 @@ Before finalizing, the agent must verify:
   - push/remote full scope: `quality_baseline_*` and `mutation_gate_*`
 - for each changed behavior, automated test deltas exist (or an approved `TEST_EXCEPTION` is documented).
 - no silent quality-scope shrink was introduced without explicit user approval.
+- for E2E changes, no app-specific logic was silently pushed into the explorer core when it belongs in adapter or Bucket-C layers.
 
 ## 3. No silent regressions
 - If tooling assumptions are platform-specific or optional, fallback behavior must be provided.

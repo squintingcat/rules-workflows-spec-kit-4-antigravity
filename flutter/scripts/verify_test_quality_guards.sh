@@ -421,6 +421,11 @@ extract_diff_payload_lines() {
     '
 }
 
+file_exists_at_merge_base() {
+  local file="$1"
+  git cat-file -e "${MERGE_BASE}:${file}" 2>/dev/null
+}
+
 if [[ "$EXCEPTIONS_FILE_CHANGED" == "true" ]]; then
   has_added_exception_entries="false"
   while IFS= read -r added_line; do
@@ -523,7 +528,7 @@ if [[ -f "$COVERAGE_INCLUDE_FILE" ]]; then
   done < <(extract_diff_payload_lines "remove" "$COVERAGE_INCLUDE_FILE")
 fi
 
-if [[ -f "$COVERAGE_EXCLUDE_FILE" ]]; then
+if [[ -f "$COVERAGE_EXCLUDE_FILE" ]] && file_exists_at_merge_base "$COVERAGE_EXCLUDE_FILE"; then
   while IFS= read -r pattern; do
     register_issue "scope_shrink" "coverage_exclude_added:${pattern}" "coverage exclude pattern added"
   done < <(extract_diff_payload_lines "add" "$COVERAGE_EXCLUDE_FILE")
@@ -536,7 +541,7 @@ if [[ -f "$MUTATION_TARGETS_FILE" ]]; then
   done < <(extract_diff_payload_lines "remove" "$MUTATION_TARGETS_FILE")
 fi
 
-if [[ -f "$MUTATION_EXCLUDES_FILE" ]]; then
+if [[ -f "$MUTATION_EXCLUDES_FILE" ]] && file_exists_at_merge_base "$MUTATION_EXCLUDES_FILE"; then
   while IFS= read -r added_line; do
     src_line="${added_line%%|*}"
     register_issue "scope_shrink" "mutation_exclude_added:${src_line}" "mutation exclude added"

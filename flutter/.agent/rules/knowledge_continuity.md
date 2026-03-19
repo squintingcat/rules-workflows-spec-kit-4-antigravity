@@ -45,3 +45,8 @@ Goal: prevent loss of engineering knowledge and prevent repeated mistakes by fut
 - For test-quality learnings, this mapping must include both:
   - `.agent/rules` constraints,
   - and enforceable pipeline/config touchpoints in `ops/testing` or `scripts`.
+- For E2E-framework learnings, this mapping must also classify the lesson into:
+  - generic explorer/core rule,
+  - adapter constraint,
+  - or Bucket-C domain-test requirement,
+  so future agents do not reintroduce app-specific journey logic into the core.

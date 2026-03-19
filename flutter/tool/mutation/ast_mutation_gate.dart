@@ -65,6 +65,33 @@ class MutationCandidate {
   final String snippet;
 }
 
+List<MutationCandidate> sampleMutationCandidates(
+  List<MutationCandidate> candidates,
+  int maxMutantsPerFile,
+) {
+  if (maxMutantsPerFile <= 0 || candidates.isEmpty) {
+    return const <MutationCandidate>[];
+  }
+
+  final sorted = List<MutationCandidate>.of(candidates)
+    ..sort((a, b) => a.offset.compareTo(b.offset));
+
+  if (sorted.length <= maxMutantsPerFile) {
+    return List<MutationCandidate>.unmodifiable(sorted);
+  }
+
+  final sampled = <MutationCandidate>[];
+  for (var bucket = 0; bucket < maxMutantsPerFile; bucket++) {
+    final start = (bucket * sorted.length) ~/ maxMutantsPerFile;
+    final exclusiveEnd = ((bucket + 1) * sorted.length) ~/ maxMutantsPerFile;
+    final end = exclusiveEnd - 1;
+    final index = ((start + end) / 2).round();
+    sampled.add(sorted[index]);
+  }
+
+  return List<MutationCandidate>.unmodifiable(sampled);
+}
+
 class RunResult {
   RunResult({
     required this.exitCode,
@@ -363,10 +390,10 @@ Future<void> main(List<String> args) async {
     );
     parsed.unit.accept(collector);
 
-    collector.candidates.sort((a, b) => a.offset.compareTo(b.offset));
-    final sampled = collector.candidates
-        .take(options.maxMutantsPerFile)
-        .toList(growable: false);
+    final sampled = sampleMutationCandidates(
+      collector.candidates,
+      options.maxMutantsPerFile,
+    );
 
     if (sampled.isEmpty) {
       stdout.writeln(
@@ -820,5 +847,46 @@ Future<void> _writeReport({
       );
     }
   }
+  final survivorsCsvFile = _survivorsCsvPathFromReport(reportFile);
+  await _writeSurvivorsCsv(
+    survivorsCsvFile: survivorsCsvFile,
+    survivors: summary.survivors,
+  );
+  sink.writeln();
+  sink.writeln('Full survivor list (CSV): `$survivorsCsvFile`');
   await sink.close();
+}
+
+String _survivorsCsvPathFromReport(String reportFile) {
+  if (reportFile.endsWith('.md')) {
+    return '${reportFile.substring(0, reportFile.length - 3)}_survivors.csv';
+  }
+  return '${reportFile}_survivors.csv';
+}
+
+Future<void> _writeSurvivorsCsv({
+  required String survivorsCsvFile,
+  required List<MutationCandidate> survivors,
+}) async {
+  final file = File(survivorsCsvFile);
+  file.parent.createSync(recursive: true);
+
+  final sink = file.openWrite();
+  sink.writeln('file,line,column,original,replacement,snippet');
+  for (final survivor in survivors) {
+    sink.writeln(
+      '${_toCsvField(survivor.file)},'
+      '${survivor.line},'
+      '${survivor.column},'
+      '${_toCsvField(survivor.original)},'
+      '${_toCsvField(survivor.replacement)},'
+      '${_toCsvField(survivor.snippet)}',
+    );
+  }
+  await sink.close();
+}
+
+String _toCsvField(String value) {
+  final escaped = value.replaceAll('"', '""').replaceAll('\n', ' ').trim();
+  return '"$escaped"';
 }

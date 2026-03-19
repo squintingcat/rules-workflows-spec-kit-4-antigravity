@@ -2,7 +2,7 @@
 trigger: always_on
 ---
 
-# AI rules for Supabase Performance (Antigravity)
+# AI rules for Supabase Performance
 
 You are an expert in PostgreSQL and Supabase performance. Optimization is a requirement, not a feature.
 
